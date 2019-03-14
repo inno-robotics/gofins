@@ -2,7 +2,6 @@ package fins
 
 import (
 	"encoding/binary"
-	"errors"
 )
 
 // request A FINS command request
@@ -66,6 +65,10 @@ func encodeMemoryAddress(memoryAddr memoryAddress) []byte {
 	binary.BigEndian.PutUint16(bytes[1:3], memoryAddr.address)
 	bytes[3] = memoryAddr.bitOffset
 	return bytes
+}
+
+func decodeMemoryAddress(data []byte) memoryAddress {
+	return memoryAddress{data[0], binary.BigEndian.Uint16(data[1:3]), data[3]}
 }
 
 func decodeRequest(bytes []byte) request {
@@ -136,9 +139,6 @@ func encodeHeader(h Header) []byte {
 	return bytes
 }
 
-var errBCDBadDigit = errors.New("Bad digit in BCD decoding")
-var errBCDOverflow = errors.New("Overflow occurred in BCD decoding")
-
 func encodeBCD(x uint64) []byte {
 	if x == 0 {
 		return []byte{0x0f}
@@ -165,7 +165,7 @@ func encodeBCD(x uint64) []byte {
 func timesTenPlusCatchingOverflow(x uint64, digit uint64) (uint64, error) {
 	x5 := x<<2 + x
 	if int64(x5) < 0 || x5<<1 > ^digit {
-		return 0, errBCDOverflow
+		return 0, BCDOverflowError{}
 	}
 	return x5<<1 + digit, nil
 }
@@ -174,7 +174,7 @@ func decodeBCD(bcd []byte) (x uint64, err error) {
 	for i, b := range bcd {
 		hi, lo := uint64(b>>4), uint64(b&0x0f)
 		if hi > 9 {
-			return 0, errBCDBadDigit
+			return 0, BCDBadDigitError{"hi", hi}
 		}
 		x, err = timesTenPlusCatchingOverflow(x, hi)
 		if err != nil {
@@ -184,7 +184,7 @@ func decodeBCD(bcd []byte) (x uint64, err error) {
 			return x, nil
 		}
 		if lo > 9 {
-			return 0, errBCDBadDigit
+			return 0, BCDBadDigitError{"lo", lo}
 		}
 		x, err = timesTenPlusCatchingOverflow(x, lo)
 		if err != nil {
